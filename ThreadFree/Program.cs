@@ -4,7 +4,6 @@ using System.Threading;
 using PeterO.Cbor;
 using Com.AugustCellars.CoAP;
 using Com.AugustCellars.CoAP.DTLS;
-using Com.AugustCellars.CoAP.Net;
 using Com.AugustCellars.CoAP.Util;
 using Com.AugustCellars.COSE;
 using System.Reflection;
@@ -17,10 +16,16 @@ namespace ThreadFree
         static void Main(string[] args)
         {
             Uri uriOfFirstBulb = null;
+            string host = null;
             var seconds = 1800;
             try
             {
-                uriOfFirstBulb = new Uri($"coaps://{args[0]}/15001/{args[1]}");
+                host = args[0];
+                
+                var components = new UriBuilder($"coaps://{host}/15001/{args[1]}");
+                if (components.Port == 0)
+                    components.Port = 5684;
+                uriOfFirstBulb = components.Uri;
                 if (args.Length >= 3)
                     seconds = int.Parse(args[2]);
             }
@@ -34,7 +39,7 @@ namespace ThreadFree
                 Environment.Exit(1);
             }
 
-            using (var hub = new HubConnection(uriOfFirstBulb.Host))
+            using (var hub = new HubConnection(host))
             {
                 hub.Start();
                 DoWakeup(uriOfFirstBulb, hub.Client, seconds);
@@ -60,10 +65,10 @@ namespace ThreadFree
                 var cieX = (int)Interpolate(t, startX, midX, endX);
                 var cieY = (int)Interpolate(t, startY, midY, endY);
 
-                var request = GetRequest(client, uriOfFirstBulb);
+                var request = GetRequest(uriOfFirstBulb);
                 request.PayloadString = GetPayload(1, brightness, cieX, cieY);
-                request.Send();
-                var response = request.WaitForResponse();
+                request.Send(client);
+                var response = request.WaitForResponse(500 /*ms*/);
 
                 if (response == null)
                 {
@@ -78,10 +83,9 @@ namespace ThreadFree
             }
         }
 
-        private static Request GetRequest(IEndPoint client, Uri uriOfFirstBulb)
+        private static Request GetRequest(Uri uriOfFirstBulb)
         {
             Request request = Request.NewPut();
-            request.EndPoint = client;
             request.URI = uriOfFirstBulb;
             return request;
         }

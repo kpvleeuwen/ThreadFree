@@ -8,9 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Net;
 using System.Text;
-using System.Threading.Tasks;
 
 namespace ThreadFree.Lib
 {
@@ -70,21 +68,27 @@ namespace ThreadFree.Lib
         {
             var securityKey = GetSecurityKeyFromFrontend();
             var tempKey = GetKey("Client_identity", securityKey);
-            var client = new DTLSClientEndPoint(tempKey);
-            client.Start();
+            using (var client = new DTLSClientEndPoint(tempKey))
+            {
+                client.Start();
 
-            Request r = Request.NewPost();
-            r.URI = new Uri($"coaps://{hub}/15011/9063");
-            r.SetPayload($"{{\"9090\":\"{ApplicationName}\"}}"); // escape hell; this translates to {"9090":"application"} 
-            r.Send(client);
-            r.WaitForResponse(2 * 1000);
-            if (r.Response == null)
-                throw new TimeoutException($"No reply while getting api key for {ApplicationName}");
-            Dictionary<string, string> response = GetJsonResponse(r);
-            string apiKey;
-            if (!response.TryGetValue("9091", out apiKey))
-                throw new InvalidDataException($"Expected response with key 9091, got { string.Join(",", response.Keys.ToArray())}");
-            return apiKey;
+                Request r = Request.NewPost();
+                r.URI = new Uri($"coaps://{hub}/15011/9063");
+                r.SetPayload($"{{ \"9090\" : \"{ApplicationName}\" }}"); // escape hell; this translates to {"9090":"application"} 
+
+                r.Respond += (sender, e) => { Console.WriteLine(e.Response); };
+
+                r.Send(client);
+                var response = r.WaitForResponse(2 * 1000);
+
+                if (response == null)
+                    throw new TimeoutException($"No reply while getting api key for {ApplicationName}");
+                Dictionary<string, string> values = GetJsonResponse(response);
+                string apiKey;
+                if (!values.TryGetValue("9091", out apiKey))
+                    throw new InvalidDataException($"Expected response with key 9091, got { string.Join(",", values.Keys.ToArray())}");
+                return apiKey;
+            }
         }
 
         private string GetSecurityKeyFromFrontend()
@@ -93,11 +97,9 @@ namespace ThreadFree.Lib
             return Console.ReadLine();
         }
 
-        private static Dictionary<string, string> GetJsonResponse(Request r)
+        private static Dictionary<string, string> GetJsonResponse(Response r)
         {
-            if (r.Response.ContentType != MediaType.ApplicationJson)
-                throw new InvalidDataException($"Expected {MediaType.ApplicationJson}, got {MediaType.ToString(r.Response.ContentType)}");
-            string payloadString = r.Response.PayloadString;
+            string payloadString = r.PayloadString;
             var response = JsonConvert.DeserializeObject<Dictionary<string, string>>(payloadString);
             return response;
         }
