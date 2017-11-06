@@ -61,7 +61,7 @@ namespace ThreadFree.Lib
                 cred.Password = CreateApiKey();
                 cred.Save();
             }
-            return GetKey(ApplicationName, cred.Password);
+            return GetKey(cred.Username, cred.Password);
         }
 
         private string CreateApiKey()
