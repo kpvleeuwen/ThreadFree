@@ -8,6 +8,7 @@ using Com.AugustCellars.CoAP.Net;
 using Com.AugustCellars.CoAP.Util;
 using Com.AugustCellars.COSE;
 using System.Reflection;
+using ThreadFree.Lib;
 
 namespace ThreadFree
 {
@@ -16,29 +17,31 @@ namespace ThreadFree
         static void Main(string[] args)
         {
             Uri uriOfFirstBulb = null;
-            OneKey key = null;
+            var seconds = 1800;
             try
             {
-                uriOfFirstBulb = new Uri(args[2]);
-                key = GetKey(args[0], args[1]);
+                uriOfFirstBulb = new Uri($"coaps://{args[0]}/15001/{args[1]}");
+                if (args.Length >= 3)
+                    seconds = int.Parse(args[2]);
             }
             catch (Exception e)
             {
                 Console.WriteLine(e.Message);
                 Console.WriteLine($"{Assembly.GetExecutingAssembly().FullName} : better wakeuplight for Tradfri ");
-                Console.WriteLine($"Given the URL of a RGB bulb, it will fade from dim red to bright white in ~30 minutes. ");
-                Console.WriteLine($"Usage: {Assembly.GetExecutingAssembly().GetName().Name} [applicationId] [api key for application] [url] ");
-                Console.WriteLine($"Example: {Assembly.GetExecutingAssembly().GetName().Name} WakeUp xCABCDEFGQA coaps://192.168.1.102/15001/65537 ");
+                Console.WriteLine($"Given the ID of a RGB bulb, it will fade from dim red to bright white in ~30 minutes. ");
+                Console.WriteLine($"Usage: {Assembly.GetExecutingAssembly().GetName().Name} hubip lampid [seconds] ");
+                Console.WriteLine($"Example: {Assembly.GetExecutingAssembly().GetName().Name} 192.168.6.102 65537 1800");
                 Environment.Exit(1);
             }
 
-            var client = new DTLSClientEndPoint(key);
-            client.Start();
-
-            DoWakeup(uriOfFirstBulb, client);
+            using (var hub = new HubConnection(uriOfFirstBulb.Host))
+            {
+                hub.Start();
+                DoWakeup(uriOfFirstBulb, hub.Client, seconds);
+            }
         }
 
-        private static void DoWakeup(Uri uriOfFirstBulb, DTLSClientEndPoint client)
+        private static void DoWakeup(Uri uriOfFirstBulb, DTLSClientEndPoint client, int seconds)
         {
             // Fade from dim red to bright white in 16 bit CIExy color space
             var max = (1 << 16) - 1;
@@ -49,8 +52,10 @@ namespace ThreadFree
             var endX = 0.312713 * max;
             var endY = 0.329016 * max;
 
-            for (double t = 0; t < 1; t += 1.0 / 1024)
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
+            while (elapsed.Elapsed.TotalSeconds < seconds)
             {
+                var t = elapsed.Elapsed.TotalSeconds / seconds;
                 var brightness = (int)(t * t * 253 + 1);
                 var cieX = (int)Interpolate(t, startX, midX, endX);
                 var cieY = (int)Interpolate(t, startY, midY, endY);
@@ -69,7 +74,7 @@ namespace ThreadFree
                     if (response.StatusCode != StatusCode.Changed)
                         Console.WriteLine(Utils.ToString(response));
                 }
-                Thread.Sleep(1000);
+                Thread.Sleep(200);
             }
         }
 
