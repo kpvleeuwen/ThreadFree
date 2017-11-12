@@ -1,2 +1,6 @@
 ﻿before_build:
   - nuget restore
+artifacts:
+  - path: ThreadFree\ThreadFree\bin\Debug\
+    name: ThreadFree
+    type: zip
